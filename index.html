@@ -1,0 +1,1036 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>TestBot Manager</title>
+
+  <!-- React -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- PDF Export Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Fonte Inter -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    /* Estilos globais para a aparência de app nativo */
+    body {
+      font-family: 'Inter', sans-serif;
+      overscroll-behavior-y: contain; /* Previne o 'pull-to-refresh' do navegador */
+    }
+    /* Esconde a barra de rolagem no conteúdo principal, mas permite rolar */
+    .content-scrollable::-webkit-scrollbar {
+      display: none;
+    }
+    .content-scrollable {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    /* Animação para o Toast */
+    .toast-enter {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    .toast-enter-active {
+      opacity: 1;
+      transform: translateY(0);
+      transition: opacity 300ms, transform 300ms;
+    }
+    .toast-exit {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .toast-exit-active {
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 300ms, transform 300ms;
+    }
+  </style>
+</head>
+<body class="bg-gray-100 text-gray-900 min-h-screen antialiased">
+
+<div id="root"></div>
+
+<script type="text/babel">
+  // Bloco de verificação de dependências
+  if (!window.React || !window.ReactDOM) {
+    document.getElementById('root').innerHTML = `<div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-lg max-w-md mx-auto mt-10" role="alert"><h2 class="font-bold">Erro Crítico</h2><p>As bibliotecas React ou ReactDOM não foram carregadas. A aplicação não pode ser iniciada.</p></div>`;
+    throw new Error('React ou ReactDOM não foram carregados.');
+  }
+
+  // --- MOCK DATA ---
+  const presetTests = [
+    { id: 'GREETING', name: "Saudação e Despedida", description: "Verifica se o bot saúda, se apresenta e se despede corretamente.", formFields: [ { name: 'didGreet', label: 'Bot iniciou com uma saudação?', type: 'tri-state' }, { name: 'identifiedUser', label: 'Identificou o nome do utilizador?', type: 'tri-state' }, { name: 'offeredHelp', label: 'Ofereceu ajuda ou apresentou-se?', type: 'tri-state' }, { name: 'didFarewell', label: 'Despediu-se cordialmente no final?', type: 'tri-state' }, { name: 'notes', label: 'Observações Adicionais', type: 'textarea' } ]},
+    { id: 'INTENT_RECOGNITION', name: "Reconhecimento de Intenção", description: "Avalia a capacidade do bot de compreender a intenção principal do utilizador.", formFields: [ { name: 'userQuestion', label: 'Pergunta/Frase do Utilizador', type: 'textarea' }, { name: 'expectedIntent', label: 'Intenção Esperada', type: 'text' }, { name: 'botResponse', label: 'Resposta do Bot', type: 'textarea' }, { name: 'result', label: 'Resultado', type: 'select', options: ['Correto', 'Incorreto', 'Parcialmente Correto'] } ]},
+    { id: 'CONTEXT_MANAGEMENT', name: "Gestão de Contexto", description: "Avalia a capacidade do bot de manter o contexto em múltiplos turnos de conversa.", formFields: [ { name: 'initialQuery', label: 'Pergunta Inicial', type: 'textarea' }, { name: 'followUpQuery', label: 'Pergunta de Continuação (sem repetir o contexto)', type: 'textarea' }, { name: 'contextKept', label: 'O bot manteve o contexto?', type: 'tri-state' }, { name: 'notes', label: 'Observações de Contexto', type: 'textarea' } ]},
+    { id: 'PROMPT_INJECTION', name: "Segurança: Injeção de Prompt", description: "Tenta manipular o bot com instruções maliciosas para ignorar as suas diretrizes originais.", formFields: [ { name: 'injectionAttempt', label: 'Tentativa de Injeção de Prompt', type: 'textarea' }, { name: 'wasResisted', label: 'O bot resistiu à injeção?', type: 'tri-state' }, { name: 'botFinalResponse', label: 'Resposta Final do Bot', type: 'textarea' } ]},
+  ];
+
+  const mockData = {
+    clients: [ { id: 1, name: "Banco Digital" }, { id: 2, name: "Varejo Online" } ],
+    projects: [ 
+        { id: 1, name: "Chatbot de Atendimento", clientId: 1, whatsappNumber: "+55 11 98765-4321", description: "Chatbot para suporte ao cliente no app principal.", objective: "Reduzir o tempo de espera no atendimento." },
+        { id: 2, name: "App Mobile Banking", clientId: 1, whatsappNumber: "+55 11 91234-5678", description: "Assistente virtual dentro do aplicativo de mobile banking.", objective: "Auxiliar em transações e consultas." },
+        { id: 3, name: "E-commerce Varejo", clientId: 2, whatsappNumber: "+55 21 99999-8888", description: "Bot para vendas e suporte no WhatsApp.", objective: "Aumentar as vendas e a satisfação do cliente." }
+    ],
+    users: [
+      { id: 1, name: "Admin User", role: "admin", email: "admin@testbot.com", password: "123" },
+      { id: 2, name: "Tester User", role: "tester", email: "tester@testbot.com", password: "123" },
+      { id: 3, name: "Client User", role: "client", email: "client@testbot.com", password: "123" },
+    ],
+    testCases: [
+      { id: "TEST-001", typeId: 'GREETING', projectId: 1, status: "pending", assignedTo: 2, customFields: [], pausedState: null },
+      { id: "TEST-017", typeId: 'PROMPT_INJECTION', projectId: 1, status: "completed", assignedTo: 2, customFields: [], pausedState: null },
+    ],
+    reports: [],
+    customTestTemplates: [],
+  };
+
+  // --- ÍCONES (SVG como Componentes React) ---
+  const HomeIcon = (props) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>);
+  const ClipboardListIcon = (props) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg>);
+  const UsersIcon = (props) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>);
+  const FileTextIcon = (props) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/><line x1="10" x2="8" y1="9" y2="9"/></svg>);
+  const LogOutIcon = (props) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>);
+  const ArrowLeftIcon = (props) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>);
+  const BuildingIcon = (props) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="16" height="20" x="4" y="2" rx="2" ry="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M16 10h.01"/><path d="M16 14h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/></svg>);
+  const FolderIcon = (props) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.23A2 2 0 0 0 8.07 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>);
+  const PlusIcon = (props) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>);
+  const HelpCircleIcon = (props) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>);
+  const BeakerIcon = (props) => (<svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4.5 3h15"/><path d="M6 3v16a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V3"/><path d="M6 14h12"/></svg>);
+
+
+  // --- CONTEXTOS ---
+  const AuthContext = React.createContext(null);
+  const DataContext = React.createContext(null);
+  const NavigationContext = React.createContext(null);
+
+  function AuthProvider({ children }) {
+    const [user, setUser] = React.useState(null);
+    const login = (email, password) => {
+      const foundUser = mockData.users.find(u => u.email === email && u.password === password);
+      if (foundUser) { setUser(foundUser); return true; }
+      return false;
+    };
+    const logout = () => {
+      setUser(null);
+    };
+    return <AuthContext.Provider value={{ user, login, logout }}>{children}</AuthContext.Provider>;
+  }
+
+  function DataProvider({ children }) {
+      const [data, setData] = React.useState(() => {
+          try {
+              const localData = localStorage.getItem('testbot-data');
+              return localData ? JSON.parse(localData) : mockData;
+          } catch (error) {
+              console.error("Could not parse localStorage data:", error);
+              return mockData;
+          }
+      });
+
+      React.useEffect(() => {
+          localStorage.setItem('testbot-data', JSON.stringify(data));
+      }, [data]);
+
+      const addClient = (newClient) => { setData(prev => ({ ...prev, clients: [...prev.clients, { id: Date.now(), ...newClient }] })); };
+      const addProject = (newProject) => { setData(prev => ({ ...prev, projects: [...prev.projects, { id: Date.now(), ...newProject }] })); };
+      const addUser = (newUser) => { setData(prev => ({ ...prev, users: [...prev.users, {id: Date.now(), ...newUser}] })); };
+      const addTest = (newTest) => { setData(prev => ({ ...prev, testCases: [...prev.testCases, {...newTest, id: `TEST-${String(prev.testCases.length + 1).padStart(3, "0")}`, status: 'pending', pausedState: null}] })); };
+      const addCustomTestTemplate = (newTemplate) => { setData(prev => ({ ...prev, customTestTemplates: [...(prev.customTestTemplates || []), { id: `CUSTOM-${Date.now()}`, ...newTemplate }] })) };
+      
+      const updateTestCase = (testCaseId, updates) => {
+          setData(prev => ({...prev, testCases: prev.testCases.map(tc => tc.id === testCaseId ? {...tc, ...updates} : tc)}));
+      };
+      
+      const executeTest = (testCaseId, resultData, user) => {
+          if (!user) { console.error("ExecuteTest: User is not defined."); return; }
+          setData(prev => {
+              const testCase = prev.testCases.find(tc => tc.id === testCaseId);
+              if (!testCase) return prev;
+              const project = prev.projects.find(p => p.id === testCase.projectId);
+              
+              const newReport = {
+                  id: `REP-${Date.now()}`, testCaseId: testCase.id, testerId: user.id,
+                  clientId: project?.clientId, projectId: testCase.projectId,
+                  executionDate: new Date().toISOString(), results: resultData,
+              };
+
+              return {
+                  ...prev,
+                  testCases: prev.testCases.map(tc => tc.id === testCaseId ? {...tc, status: 'completed', pausedState: null } : tc),
+                  reports: [...prev.reports, newReport],
+              };
+          });
+      };
+      
+      return <DataContext.Provider value={{ data, addClient, addProject, addUser, addTest, executeTest, updateTestCase, addCustomTestTemplate }}>{children}</DataContext.Provider>;
+  }
+
+  function NavigationProvider({ children }) {
+    const [history, setHistory] = React.useState(['dashboard']);
+    const page = history[history.length - 1];
+    const navigate = (newPage) => setHistory(prev => [...prev, newPage]);
+    const goBack = () => setHistory(prev => prev.length > 1 ? prev.slice(0, -1) : prev);
+    const reset = (page) => setHistory([page || 'dashboard']);
+    return <NavigationContext.Provider value={{ page, history, navigate, goBack, reset }}>{children}</NavigationContext.Provider>;
+  }
+  
+  const useAuth = () => React.useContext(AuthContext);
+  const useData = () => React.useContext(DataContext);
+  const useNavigation = () => React.useContext(NavigationContext);
+
+  // --- COMPONENTES DE UI ---
+  function Modal({ isOpen, onClose, title, children, size = 'lg' }) {
+    if (!isOpen) return null;
+    const sizeClasses = { sm: 'max-w-sm', md: 'max-w-md', lg: 'max-w-lg', xl: 'max-w-xl', '2xl': 'max-w-2xl' };
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4" onClick={onClose}>
+        <div className={`bg-white rounded-2xl shadow-xl w-full ${sizeClasses[size]}`} onClick={(e) => e.stopPropagation()}>
+          <div className="p-6 border-b border-gray-200"><h3 className="text-lg font-bold text-gray-800">{title}</h3></div>
+          <div className="p-6 max-h-[70vh] overflow-y-auto">{children}</div>
+        </div>
+      </div>
+    );
+  }
+
+  function Toast({ message, type, onDismiss }) {
+    React.useEffect(() => {
+      if (message) {
+        const timer = setTimeout(onDismiss, 3000);
+        return () => clearTimeout(timer);
+      }
+    }, [message, onDismiss]);
+    if (!message) return null;
+    const styles = { success: "bg-green-500", error: "bg-red-500" };
+    return (<div className={`fixed bottom-24 sm:bottom-10 left-1/2 -translate-x-1/2 ${styles[type]} text-white px-6 py-3 rounded-full shadow-lg text-sm font-semibold toast-enter-active`}>{message}</div>);
+  }
+  
+  function Login() {
+    const { login } = useAuth();
+    const [email, setEmail] = React.useState("");
+    const [password, setPassword] = React.useState("");
+    const [error, setError] = React.useState("");
+    const [isLoading, setIsLoading] = React.useState(false);
+    const handleLogin = (e) => {
+      e.preventDefault();
+      if (!email || !password) return setError("Preencha todos os campos.");
+      setIsLoading(true);
+      setError("");
+      setTimeout(() => {
+          const success = login(email, password);
+          if (!success) { setError("Email ou senha inválidos."); }
+          setIsLoading(false);
+      }, 1000);
+    };
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
+        <div className="bg-white p-8 rounded-2xl shadow-md w-full max-w-sm">
+          <h1 className="text-3xl font-bold text-gray-800 text-center mb-2">TestBot</h1>
+          <p className="text-center text-gray-500 mb-8">Manager Login</p>
+          <form onSubmit={handleLogin}>
+            <div className="mb-4">
+                <label className="text-sm font-bold text-gray-600 mb-1 block" htmlFor="email">Email</label>
+                <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"/>
+            </div>
+            <div className="mb-6">
+                <label className="text-sm font-bold text-gray-600 mb-1 block" htmlFor="password">Senha</label>
+                <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"/>
+            </div>
+            {error && <p className="text-red-500 text-sm text-center mb-4">{error}</p>}
+            <button type="submit" disabled={isLoading} className="w-full bg-cyan-500 text-white p-3 rounded-lg hover:bg-cyan-600 transition duration-200 font-bold disabled:bg-cyan-300 flex items-center justify-center">
+              {isLoading ? <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'Entrar'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // --- LAYOUT DO APP ---
+  function AppLayout({ children }) {
+    const { user, logout } = useAuth();
+    const { page, goBack } = useNavigation();
+    const pageTitles = {
+      dashboard: "Dashboard", 'test-management': "Gerenciar Testes", 'user-management': "Gerenciar Usuários",
+      reports: "Relatórios", 'client-management': "Gerenciar Clientes", 'project-management': "Gerenciar Projetos",
+      'test-guidelines': "Orientações de Teste", 'custom-templates': "Modelos de Teste"
+    };
+    const mainPages = Object.keys(pageTitles);
+    const isSubPage = !mainPages.includes(page);
+    return (
+        <div className="h-screen w-screen flex flex-col sm:flex-row bg-gray-100">
+            <DesktopSidebar user={user} logout={logout} />
+            <div className="flex-1 flex flex-col overflow-hidden">
+                <header className="bg-white/80 backdrop-blur-lg border-b border-gray-200 w-full z-10">
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                        <div className="flex items-center justify-between h-16">
+                            {isSubPage ? ( <button onClick={goBack} className="flex items-center gap-2 text-gray-600 hover:text-cyan-600"><ArrowLeftIcon className="w-6 h-6" /><span className="font-semibold hidden sm:block">Voltar</span></button>) : <div className="sm:hidden w-10"></div>}
+                            <h1 className="text-lg font-bold text-gray-800">{pageTitles[page] || "Detalhes"}</h1>
+                             <div className="w-10 sm:hidden"></div>
+                             <button onClick={logout} className="hidden sm:flex items-center gap-2 text-sm font-semibold text-gray-500 hover:text-red-500"><LogOutIcon className="w-5 h-5" />Sair</button>
+                        </div>
+                    </div>
+                </header>
+                <main className="flex-1 overflow-y-auto content-scrollable p-4 sm:p-6 pb-24 sm:pb-6">{children}</main>
+                <BottomNav user={user} logout={logout} />
+            </div>
+        </div>
+    );
+  }
+
+  function DesktopSidebar({ user, logout }) {
+      const { page, reset } = useNavigation();
+      const navItems = {
+        admin: [
+          { name: "Dashboard", path: "dashboard", icon: HomeIcon }, { name: "Clientes", path: "client-management", icon: BuildingIcon },
+          { name: "Projetos", path: "project-management", icon: FolderIcon }, { name: "Testes", path: "test-management", icon: ClipboardListIcon },
+          { name: "Usuários", path: "user-management", icon: UsersIcon }, { name: "Relatórios", path: "reports", icon: FileTextIcon },
+          { name: "Modelos", path: "custom-templates", icon: BeakerIcon }, { name: "Orientações", path: "test-guidelines", icon: HelpCircleIcon },
+        ],
+        tester: [ { name: "Dashboard", path: "dashboard", icon: HomeIcon }, { name: "Meus Testes", path: "test-management", icon: ClipboardListIcon }, { name: "Relatórios", path: "reports", icon: FileTextIcon }, { name: "Orientações", path: "test-guidelines", icon: HelpCircleIcon } ],
+        client: [ { name: "Dashboard", path: "dashboard", icon: HomeIcon }, { name: "Relatórios", path: "reports", icon: FileTextIcon }, { name: "Orientações", path: "test-guidelines", icon: HelpCircleIcon } ],
+      };
+      return (
+          <div className="hidden sm:flex flex-col w-64 bg-white border-r border-gray-200 p-4">
+              <h1 className="text-2xl font-bold text-cyan-600 mb-10 px-2">TestBot</h1>
+              <nav className="flex-1 space-y-2">
+                  {navItems[user.role].map(item => {
+                      const Icon = item.icon;
+                      const isActive = page === item.path;
+                      return ( <button key={item.path} onClick={() => reset(item.path)} className={`w-full flex items-center gap-3 text-left py-2.5 px-4 rounded-lg transition-colors text-base font-semibold ${isActive ? 'bg-cyan-500 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'}`}><Icon className="w-5 h-5" />{item.name}</button> );
+                  })}
+              </nav>
+              <div className="pt-6 border-t border-gray-200"><p className="text-sm font-semibold text-gray-800">{user.name}</p><p className="text-xs text-gray-500 capitalize">{user.role}</p></div>
+          </div>
+      );
+  }
+  
+  function BottomNav({user, logout}) {
+      const { page, reset } = useNavigation();
+      const navItems = {
+        admin: [ { name: "Dashboard", path: "dashboard", icon: HomeIcon }, { name: "Testes", path: "test-management", icon: ClipboardListIcon }, { name: "Relatórios", path: "reports", icon: FileTextIcon }, { name: "Orientações", path: "test-guidelines", icon: HelpCircleIcon } ],
+        tester: [ { name: "Dashboard", path: "dashboard", icon: HomeIcon }, { name: "Meus Testes", path: "test-management", icon: ClipboardListIcon }, { name: "Relatórios", path: "reports", icon: FileTextIcon }, { name: "Orientações", path: "test-guidelines", icon: HelpCircleIcon } ],
+        client: [ { name: "Dashboard", path: "dashboard", icon: HomeIcon }, { name: "Relatórios", path: "reports", icon: FileTextIcon }, { name: "Orientações", path: "test-guidelines", icon: HelpCircleIcon } ],
+      };
+    return(
+      <nav className="sm:hidden fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-lg border-t border-gray-200 z-20">
+          <div className="flex justify-around items-center h-16">
+            {navItems[user.role].map(item => {
+              const Icon = item.icon;
+              const isActive = page === item.path;
+              return ( <button key={item.path} onClick={() => reset(item.path)} className={`flex flex-col items-center justify-center w-full h-full transition-colors ${isActive ? 'text-cyan-500' : 'text-gray-500 hover:text-cyan-500'}`}><Icon className="w-6 h-6 mb-1"/><span className="text-xs font-medium">{item.name}</span></button>);
+            })}
+            <button onClick={logout} className="flex flex-col items-center justify-center w-full h-full text-gray-500 hover:text-red-500"><LogOutIcon className="w-6 h-6 mb-1"/><span className="text-xs font-medium">Sair</span></button>
+          </div>
+        </nav>
+    );
+  }
+
+  // --- PÁGINAS DA APLICAÇÃO ---
+  function Dashboard() {
+    const { user } = useAuth();
+    const { data } = useData();
+
+    const assignedTests = data.testCases.filter(tc => tc.assignedTo === user.id);
+    const completedTests = data.reports.filter(r => r.testerId === user.id).length;
+    const pendingTests = assignedTests.filter(tc => tc.status === 'pending').length;
+
+    return (
+      <div className="space-y-6">
+        <h2 className="text-2xl font-bold text-gray-800">Olá, {user.name.split(' ')[0]}!</h2>
+        {user.role === 'tester' ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+            <StatCard title="Total de Testes Atribuídos" value={assignedTests.length} color="indigo" />
+            <StatCard title="Testes Realizados" value={completedTests} color="green" />
+            <StatCard title="Testes Pendentes" value={pendingTests} color="blue" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+            <StatCard title="Total de Relatórios Gerados" value={data.reports.length} color="cyan" />
+            <StatCard title="Projetos Ativos" value={data.projects.length} color="blue" />
+            <StatCard title="Clientes na Base" value={data.clients.length} color="indigo" />
+          </div>
+        )}
+      </div>
+    );
+  }
+  
+  function StatCard({ title, value, color }) {
+    const colors = { blue: 'from-blue-500 to-blue-400', cyan: 'from-cyan-500 to-cyan-400', indigo: 'from-indigo-500 to-indigo-400', green: 'from-green-500 to-green-400' };
+    return (<div className="bg-white p-5 rounded-xl shadow-sm"><h3 className="text-sm font-semibold text-gray-600">{title}</h3><p className={`text-3xl font-bold mt-2 bg-clip-text text-transparent bg-gradient-to-r ${colors[color]}`}>{value}</p></div>);
+  }
+
+  function AddClientModal({ isOpen, onClose }) {
+    const { addClient } = useData();
+    const [name, setName] = React.useState('');
+    const [error, setError] = React.useState('');
+    const handleSave = () => {
+      if (!name.trim()) { setError('O nome do cliente é obrigatório.'); return; }
+      addClient({ name });
+      setName('');
+      setError('');
+      onClose();
+    };
+    return (
+      <Modal isOpen={isOpen} onClose={onClose} title="Adicionar Novo Cliente">
+        <div className="space-y-4">
+          {error && <p className="text-red-500 text-sm">{error}</p>}
+          <input type="text" placeholder="Nome do Cliente" value={name} onChange={(e) => setName(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" />
+          <button onClick={handleSave} className="w-full bg-cyan-500 text-white p-3 rounded-lg hover:bg-cyan-600 transition font-bold">Salvar Cliente</button>
+        </div>
+      </Modal>
+    );
+  }
+
+  function ClientManagement() {
+      const { data } = useData();
+      const [isAddModalOpen, setAddModalOpen] = React.useState(false);
+      return (
+        <div className="space-y-6">
+          <button onClick={() => setAddModalOpen(true)} className="w-full sm:w-auto flex items-center justify-center gap-2 bg-cyan-500 text-white px-4 py-3 rounded-lg font-semibold shadow hover:bg-cyan-600 transition">
+            <PlusIcon className="w-5 h-5" /> Adicionar Cliente
+          </button>
+          <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6">
+            <h3 className="font-bold text-lg mb-4">Clientes</h3>
+            <div className="space-y-3">
+              {data.clients.map(c => <div key={c.id} className="bg-gray-50 p-3 rounded-lg font-semibold">{c.name}</div>)}
+            </div>
+          </div>
+          <AddClientModal isOpen={isAddModalOpen} onClose={() => setAddModalOpen(false)} />
+        </div>
+      );
+  }
+
+  function AddProjectModal({ isOpen, onClose }) {
+      const { data, addProject } = useData();
+      const [newProject, setNewProject] = React.useState({ name: '', clientId: '', whatsappNumber: '', description: '', objective: '' });
+      const [error, setError] = React.useState('');
+      
+      const handleSave = () => {
+          if (!newProject.name.trim() || !newProject.clientId || !newProject.whatsappNumber.trim()) { setError('Nome, Cliente e Nº de WhatsApp são obrigatórios.'); return; }
+          addProject(newProject);
+          setNewProject({ name: '', clientId: '', whatsappNumber: '', description: '', objective: '' });
+          setError('');
+          onClose();
+      };
+      const handleInputChange = (e) => {
+          const { name, value } = e.target;
+          setNewProject(prev => ({ ...prev, [name]: value }));
+      };
+      return (
+          <Modal isOpen={isOpen} onClose={onClose} title="Adicionar Novo Projeto">
+              <div className="space-y-4">
+                  {error && <p className="text-red-500 text-sm">{error}</p>}
+                  <input type="text" name="name" placeholder="Nome do Projeto" value={newProject.name} onChange={handleInputChange} className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" />
+                  <input type="text" name="whatsappNumber" placeholder="Nº de WhatsApp do Bot" value={newProject.whatsappNumber} onChange={handleInputChange} className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" />
+                  <textarea name="description" placeholder="Descrição do Projeto" value={newProject.description} onChange={handleInputChange} className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg min-h-[80px]"></textarea>
+                  <textarea name="objective" placeholder="Objetivo Principal" value={newProject.objective} onChange={handleInputChange} className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg min-h-[80px]"></textarea>
+                  <select name="clientId" onChange={handleInputChange} value={newProject.clientId} className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg">
+                      <option value="">Selecione um Cliente</option>
+                      {data.clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                  <button onClick={handleSave} className="w-full bg-cyan-500 text-white p-3 rounded-lg hover:bg-cyan-600 transition font-bold">Salvar Projeto</button>
+              </div>
+          </Modal>
+      );
+  }
+
+  function ProjectManagement() {
+      const { data } = useData();
+      const [isAddModalOpen, setAddModalOpen] = React.useState(false);
+      return (
+          <div className="space-y-6">
+              <button onClick={() => setAddModalOpen(true)} className="w-full sm:w-auto flex items-center justify-center gap-2 bg-cyan-500 text-white px-4 py-3 rounded-lg font-semibold shadow hover:bg-cyan-600 transition">
+                  <PlusIcon className="w-5 h-5" /> Adicionar Projeto
+              </button>
+              <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6">
+                  <h3 className="font-bold text-lg mb-4">Projetos</h3>
+                  <div className="space-y-3">
+                      {data.projects.map(p => {
+                          const client = data.clients.find(c => c.id == p.clientId);
+                          return ( <div key={p.id} className="bg-gray-50 p-4 rounded-lg"><p className="font-bold">{p.name}</p><p className="text-sm text-cyan-600 font-semibold">{p.whatsappNumber}</p><p className="text-sm text-gray-500 mt-1">{client?.name || 'Cliente não encontrado'}</p><p className="text-sm text-gray-700 mt-2">{p.description}</p></div> );
+                      })}
+                  </div>
+              </div>
+              <AddProjectModal isOpen={isAddModalOpen} onClose={() => setAddModalOpen(false)} />
+          </div>
+      )
+  }
+  
+  function TestExecutionForm({ testCase, onExecute, onCancel, onPause }) {
+      const allTemplates = [...presetTests, ...(useData().data.customTestTemplates || [])];
+      const preset = allTemplates.find(p => p.id === testCase.typeId);
+      const [formData, setFormData] = React.useState(testCase.pausedState || {});
+      const handleInputChange = (name, value) => { setFormData(prev => ({ ...prev, [name]: value })); };
+      const handleSubmit = () => { onExecute(testCase.id, formData); };
+      const handlePause = () => { onPause(testCase.id, formData); };
+      
+      const allFields = [...(preset?.formFields || []), ...(testCase.customFields || [])];
+
+      if (!preset) { return <div className="text-red-500 p-4">Erro: Tipo de teste não encontrado.</div>; }
+      
+      return (
+        <div className="p-4 space-y-4">
+          <h4 className="font-bold text-gray-700">Executando: {preset.name}</h4>
+          {allFields.map(field => (
+            <div key={field.name}>
+              <label className="block text-sm font-semibold text-gray-600 mb-1">{field.label}</label>
+              {field.type === 'textarea' && ( <textarea name={field.name} value={formData[field.name] || ''} onChange={e => handleInputChange(e.target.name, e.target.value)} className="w-full p-2 bg-gray-50 border border-gray-300 rounded-lg text-sm"></textarea> )}
+              {field.type === 'text' && ( <input type="text" name={field.name} value={formData[field.name] || ''} onChange={e => handleInputChange(e.target.name, e.target.value)} className="w-full p-2 bg-gray-50 border border-gray-300 rounded-lg text-sm" /> )}
+              {field.type === 'tri-state' && (
+                <select name={field.name} value={formData[field.name] || ''} onChange={e => handleInputChange(e.target.name, e.target.value)} className="w-full p-2 bg-gray-50 border border-gray-300 rounded-lg text-sm">
+                  <option value="">Selecione...</option>
+                  <option value="Sim">Sim</option>
+                  <option value="Não">Não</option>
+                  <option value="N/A">Não se aplica</option>
+                </select>
+              )}
+              {field.type === 'select' && (
+                <select name={field.name} value={formData[field.name] || ''} onChange={e => handleInputChange(e.target.name, e.target.value)} className="w-full p-2 bg-gray-50 border border-gray-300 rounded-lg text-sm">
+                  <option value="">Selecione...</option>
+                  {field.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                </select>
+              )}
+            </div>
+          ))}
+          <div className="flex gap-2 pt-4">
+             <button onClick={onCancel} className="w-full bg-gray-200 text-gray-700 p-2 rounded-lg hover:bg-gray-300 transition font-semibold text-sm">Cancelar</button>
+             <button onClick={handlePause} className="w-full bg-yellow-500 text-white p-2 rounded-lg hover:bg-yellow-600 transition font-semibold text-sm">Pausar</button>
+             <button onClick={handleSubmit} className="w-full bg-green-500 text-white p-2 rounded-lg hover:bg-green-600 transition font-semibold text-sm">Concluir</button>
+          </div>
+        </div>
+      );
+  }
+
+  function CreateTestModal({ isOpen, onClose }) {
+      const { data, addTest } = useData();
+      const [selectedClient, setSelectedClient] = React.useState('');
+      const [filteredProjects, setFilteredProjects] = React.useState([]);
+      const [newTest, setNewTest] = React.useState({ projectId: "", typeId: "", assignedTo: "", customFields: [] });
+      const [error, setError] = React.useState("");
+      const [customFields, setCustomFields] = React.useState([]);
+      
+      const allTemplates = [...presetTests, ...(data.customTestTemplates || [])];
+
+      const handleAddCustomField = () => {
+        setCustomFields([...customFields, { id: Date.now(), name: `custom_${Date.now()}`, label: '', type: 'text' }]);
+      };
+      const handleCustomFieldChange = (id, fieldName, value) => {
+        setCustomFields(customFields.map(f => f.id === id ? { ...f, [fieldName]: value } : f));
+      };
+      
+      React.useEffect(() => {
+          if(selectedClient) {
+              setFilteredProjects(data.projects.filter(p => p.clientId == selectedClient));
+              setNewTest(nt => ({...nt, projectId: ''}));
+          } else { setFilteredProjects([]); }
+      }, [selectedClient, data.projects]);
+      
+      const handleAddTest = () => {
+          if (!newTest.projectId || !newTest.typeId || !newTest.assignedTo) { setError("Preencha todos os campos obrigatórios."); return; }
+          const finalCustomFields = customFields.filter(f => f.label.trim() !== '');
+          addTest({...newTest, customFields: finalCustomFields});
+          setNewTest({ projectId: "", typeId: "", assignedTo: "", customFields: [] });
+          setCustomFields([]);
+          setError("");
+          onClose(); 
+      };
+      
+      const handleInputChange = (e) => {
+        const { name, value } = e.target;
+        const finalValue = (name === 'assignedTo' || name === 'projectId') && value ? parseInt(value, 10) : value;
+        setNewTest(prev => ({...prev, [name]: finalValue}));
+      };
+
+      return (
+          <Modal isOpen={isOpen} onClose={onClose} title="Criar Novo Caso de Teste">
+              <div className="space-y-4">
+                  {error && <p className="text-red-500 text-sm">{error}</p>}
+                  <select onChange={(e) => setSelectedClient(e.target.value)} value={selectedClient} className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg">
+                      <option value="">1. Selecione um Cliente</option>
+                      {data.clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                  <select name="projectId" onChange={handleInputChange} value={newTest.projectId} disabled={!selectedClient} className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg disabled:bg-gray-200">
+                      <option value="">2. Selecione um Projeto</option>
+                      {filteredProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                  <select name="typeId" onChange={handleInputChange} value={newTest.typeId} className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg">
+                      <option value="">3. Selecione o Tipo de Teste</option>
+                      <optgroup label="Modelos Predefinidos">
+                        {presetTests.map(pt => <option key={pt.id} value={pt.id}>{pt.name}</option>)}
+                      </optgroup>
+                      {(data.customTestTemplates || []).length > 0 && (
+                        <optgroup label="Modelos Personalizados">
+                          {(data.customTestTemplates || []).map(ct => <option key={ct.id} value={ct.id}>{ct.name}</option>)}
+                        </optgroup>
+                      )}
+                  </select>
+                  <select name="assignedTo" onChange={handleInputChange} value={newTest.assignedTo} className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg">
+                      <option value="">4. Atribuir a um Testador</option>
+                      {data.users.filter(u => u.role === 'tester').map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+                  
+                  <div className="border-t pt-4">
+                      <h4 className="font-semibold text-gray-700">Itens Personalizados (Opcional)</h4>
+                      {customFields.map(field => (
+                          <div key={field.id} className="flex items-center gap-2 mt-2">
+                              <input type="text" placeholder="Nome do Item" value={field.label} onChange={e => handleCustomFieldChange(field.id, 'label', e.target.value)} className="flex-1 p-2 bg-gray-50 border border-gray-300 rounded-lg text-sm" />
+                              <select value={field.type} onChange={e => handleCustomFieldChange(field.id, 'type', e.target.value)} className="p-2 bg-gray-50 border border-gray-300 rounded-lg text-sm">
+                                  <option value="text">Texto</option>
+                                  <option value="tri-state">Sim/Não/N/A</option>
+                              </select>
+                          </div>
+                      ))}
+                      <button onClick={handleAddCustomField} className="mt-2 text-sm text-cyan-600 hover:text-cyan-800">+ Adicionar Item</button>
+                  </div>
+                  
+                  <button onClick={handleAddTest} className="w-full bg-cyan-500 text-white p-3 rounded-lg hover:bg-cyan-600 transition font-bold mt-4">Adicionar Teste</button>
+              </div>
+          </Modal>
+      );
+  }
+
+  function TestManagement() {
+      const { user } = useAuth();
+      const { data, executeTest, updateTestCase } = useData();
+      const [toast, setToast] = React.useState({ message: '', type: 'success' });
+      const [isCreateModalOpen, setCreateModalOpen] = React.useState(false);
+      const [executingTestId, setExecutingTestId] = React.useState(null);
+      
+      const handleExecuteTest = (id, resultData) => {
+          executeTest(id, resultData, user);
+          setToast({ message: "Teste executado com sucesso! Relatório gerado.", type: 'success' });
+          setExecutingTestId(null);
+      };
+      
+      const handlePauseTest = (id, formData) => {
+          updateTestCase(id, { status: 'paused', pausedState: formData });
+          setToast({ message: "Teste pausado com sucesso.", type: 'success' });
+          setExecutingTestId(null);
+      };
+
+      const handleResumeTest = (tc) => {
+          updateTestCase(tc.id, { status: 'pending' });
+          setExecutingTestId(tc.id);
+      };
+
+      const filteredTestCases = data.testCases.filter(tc => user.role === 'admin' || tc.assignedTo === user.id);
+      const statusStyles = { pending: "bg-yellow-100 text-yellow-800", completed: "bg-green-100 text-green-800", paused: "bg-orange-100 text-orange-800" };
+      
+      const TestCaseCard = ({ tc }) => {
+          const allTemplates = [...presetTests, ...(data.customTestTemplates || [])];
+          const preset = allTemplates.find(p => p.id === tc.typeId) || {};
+          const project = data.projects.find(p => p.id === tc.projectId) || {};
+          const client = data.clients.find(c => c.id === project.clientId) || {};
+          return (
+              <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                <div className="p-4">
+                  <div className="flex justify-between items-start">
+                      <div>
+                          <p className="text-xs font-semibold text-cyan-600">{client.name}</p>
+                          <h3 className="font-bold text-gray-800">{preset.name}</h3>
+                          <p className="text-sm text-gray-500">{project.name} - {project.whatsappNumber}</p>
+                      </div>
+                      <span className={`px-2.5 py-0.5 text-xs font-semibold rounded-full ${statusStyles[tc.status]}`}>{tc.status}</span>
+                  </div>
+                  <p className="text-sm text-gray-600 mt-2">{preset.description}</p>
+                  {user.role === "tester" && tc.status === "pending" && executingTestId !== tc.id && (
+                    <div className="pt-4 mt-4 border-t border-gray-200">
+                        <button onClick={() => setExecutingTestId(tc.id)} className="w-full bg-blue-500 text-white p-2 rounded-lg hover:bg-blue-600 transition font-semibold text-sm">Iniciar Execução</button>
+                    </div>
+                  )}
+                  {user.role === "tester" && tc.status === "paused" && executingTestId !== tc.id && (
+                    <div className="pt-4 mt-4 border-t border-gray-200">
+                        <button onClick={() => handleResumeTest(tc)} className="w-full bg-orange-500 text-white p-2 rounded-lg hover:bg-orange-600 transition font-semibold text-sm">Retomar Execução</button>
+                    </div>
+                  )}
+                </div>
+                {executingTestId === tc.id && (
+                  <div className="bg-gray-50 border-t border-gray-200">
+                    <TestExecutionForm testCase={tc} onExecute={handleExecuteTest} onCancel={() => setExecutingTestId(null)} onPause={handlePauseTest} />
+                  </div>
+                )}
+              </div>
+          );
+      };
+      
+      return (
+          <div className="space-y-6">
+              {user.role === 'admin' && (
+                  <button onClick={() => setCreateModalOpen(true)} className="w-full sm:w-auto flex items-center justify-center gap-2 bg-cyan-500 text-white px-4 py-3 rounded-lg font-semibold shadow hover:bg-cyan-600 transition">
+                      <PlusIcon className="w-5 h-5" /> Criar Novo Teste
+                  </button>
+              )}
+              <div className="space-y-4">
+                {filteredTestCases.length > 0 ? filteredTestCases.map(tc => <TestCaseCard key={tc.id} tc={tc} />) : <div className="text-center py-10 bg-white rounded-xl shadow-sm"><p className="text-gray-500">Nenhum teste atribuído.</p></div>}
+              </div>
+              <Toast message={toast.message} type={toast.type} onDismiss={() => setToast({ ...toast, message: ''})} />
+              <CreateTestModal isOpen={isCreateModalOpen} onClose={() => setCreateModalOpen(false)} />
+          </div>
+      );
+  }
+  
+  function AddUserModal({ isOpen, onClose }) {
+    const { addUser } = useData();
+    const [newUser, setNewUser] = React.useState({ name: '', email: '', password: '', role: 'tester' });
+    const [error, setError] = React.useState('');
+    const handleSave = () => {
+      if (!newUser.name.trim() || !newUser.email.trim() || !newUser.password.trim()) { setError('Todos os campos são obrigatórios.'); return; }
+      addUser(newUser);
+      setNewUser({ name: '', email: '', password: '', role: 'tester' });
+      setError('');
+      onClose();
+    };
+    const handleInputChange = (e) => {
+      const { name, value } = e.target;
+      setNewUser(prev => ({...prev, [name]: value}));
+    };
+    return (
+      <Modal isOpen={isOpen} onClose={onClose} title="Adicionar Novo Usuário">
+        <div className="space-y-4">
+          {error && <p className="text-red-500 text-sm">{error}</p>}
+          <input type="text" name="name" placeholder="Nome Completo" value={newUser.name} onChange={handleInputChange} className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" />
+          <input type="email" name="email" placeholder="Email" value={newUser.email} onChange={handleInputChange} className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" />
+          <input type="password" name="password" placeholder="Senha" value={newUser.password} onChange={handleInputChange} className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" />
+          <select name="role" value={newUser.role} onChange={handleInputChange} className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg">
+              <option value="tester">Tester</option>
+              <option value="client">Cliente</option>
+              <option value="admin">Admin</option>
+          </select>
+          <button onClick={handleSave} className="w-full bg-cyan-500 text-white p-3 rounded-lg hover:bg-cyan-600 transition font-bold">Salvar Usuário</button>
+        </div>
+      </Modal>
+    );
+  }
+
+  function UserManagement() {
+    const { data } = useData();
+    const [isAddModalOpen, setAddModalOpen] = React.useState(false);
+    const UserCard = ({ user }) => (
+        <div className="bg-gray-50 rounded-lg p-4 flex justify-between items-center">
+            <div>
+                <p className="font-semibold">{user.name}</p>
+                <p className="text-sm text-gray-500">{user.email}</p>
+            </div>
+            <span className="px-2 py-1 text-xs font-semibold rounded-full bg-indigo-100 text-indigo-800 capitalize">{user.role}</span>
+        </div>
+    );
+    return (
+        <div className="space-y-6">
+            <button onClick={() => setAddModalOpen(true)} className="w-full sm:w-auto flex items-center justify-center gap-2 bg-cyan-500 text-white px-4 py-3 rounded-lg font-semibold shadow hover:bg-cyan-600 transition">
+                <PlusIcon className="w-5 h-5" /> Adicionar Usuário
+            </button>
+            <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6">
+                <h3 className="font-bold text-lg mb-4">Usuários</h3>
+                <div className="space-y-3">
+                    {data.users.map(u => <UserCard key={u.id} user={u} />)}
+                </div>
+            </div>
+            <AddUserModal isOpen={isAddModalOpen} onClose={() => setAddModalOpen(false)} />
+        </div>
+    );
+  }
+
+  function ReportDetailModal({ isOpen, onClose, report }) {
+      const { data } = useData();
+      if (!report) return null;
+
+      const allTemplates = [...presetTests, ...(data.customTestTemplates || [])];
+      const testCase = data.testCases.find(tc => tc.id === report.testCaseId) || {};
+      const preset = allTemplates.find(p => p.id === testCase.typeId) || {};
+      const tester = data.users.find(u => u.id === report.testerId) || {};
+      const project = data.projects.find(p => p.id === report.projectId) || {};
+      const client = data.clients.find(c => c.id == report.clientId) || {};
+      
+      const allFields = [...(preset?.formFields || []), ...(testCase.customFields || [])];
+
+      const formattedDate = new Date(report.executionDate).toLocaleString('pt-BR', { dateStyle: 'long', timeStyle: 'short' });
+
+      const generatePDF = () => {
+          const { jsPDF } = window.jspdf;
+          const doc = new jsPDF();
+          
+          doc.setFontSize(18);
+          doc.text(`Relatório de Teste: ${preset.name}`, 14, 22);
+          
+          doc.setFontSize(11);
+          doc.setTextColor(100);
+          doc.text(`ID do Relatório: ${report.id}`, 14, 32);
+
+          doc.autoTable({
+            startY: 40,
+            head: [['Detalhe', 'Informação']],
+            body: [
+              ['Cliente', client.name || 'N/A'],
+              ['Projeto', project.name || 'N/A'],
+              ['Testador', tester.name || 'N/A'],
+              ['Data de Execução', formattedDate],
+            ],
+            theme: 'striped',
+          });
+
+          const finalY = doc.lastAutoTable.finalY || 10;
+          doc.setFontSize(14);
+          doc.text('Resultados da Execução', 14, finalY + 15);
+
+          const tableBody = allFields.map(field => {
+              const resultValue = report.results[field.name];
+              const displayValue = resultValue || 'Não preenchido';
+              return [field.label, displayValue];
+          });
+
+          doc.autoTable({
+              startY: finalY + 20,
+              head: [['Critério Avaliado', 'Resultado']],
+              body: tableBody,
+              theme: 'grid',
+          });
+
+          doc.save(`relatorio-${report.testCaseId}.pdf`);
+      };
+
+      return (
+          <Modal isOpen={isOpen} onClose={onClose} title={`Detalhes do Relatório ${report.id}`}>
+              <div className="space-y-4 text-sm">
+                  <div className="bg-gray-50 p-3 rounded-lg space-y-1">
+                      <p><span className="font-semibold">Teste:</span> {preset.name}</p>
+                      <p><span className="font-semibold">Projeto:</span> {project.name}</p>
+                      <p><span className="font-semibold">Cliente:</span> {client.name}</p>
+                      <p><span className="font-semibold">Testador:</span> {tester.name}</p>
+                      <p><span className="font-semibold">Data:</span> {formattedDate}</p>
+                  </div>
+                  <h4 className="font-bold text-gray-800 pt-2 border-t">Resultados da Execução</h4>
+                  <div className="space-y-2">
+                      {allFields.map(field => {
+                          const resultValue = report.results[field.name];
+                          return (
+                              <div key={field.name} className="bg-gray-50 p-2 rounded-md">
+                                  <p className="font-semibold text-gray-600">{field.label}</p>
+                                  <p className="text-gray-800 break-words">
+                                    {resultValue || 'Não preenchido'}
+                                  </p>
+                              </div>
+                          );
+                      })}
+                  </div>
+                  <div className="pt-4 border-t">
+                      <button onClick={generatePDF} className="w-full bg-blue-500 text-white p-2 rounded-lg hover:bg-blue-600 transition font-semibold">
+                          Exportar para PDF
+                      </button>
+                  </div>
+              </div>
+          </Modal>
+      );
+  }
+
+  function Reports() {
+    const { data } = useData();
+    const [selectedReport, setSelectedReport] = React.useState(null);
+
+    const ReportCard = ({ report }) => {
+        const testCase = data.testCases.find(tc => tc.id === report.testCaseId) || {};
+        const allTemplates = [...presetTests, ...(data.customTestTemplates || [])];
+        const preset = allTemplates.find(p => p.id === testCase.typeId) || {};
+        const tester = data.users.find(u => u.id === report.testerId) || {};
+        const project = data.projects.find(p => p.id === report.projectId) || {};
+        const formattedDate = new Date(report.executionDate).toLocaleDateString('pt-BR');
+
+        return (
+            <div className="bg-white rounded-xl shadow-sm p-4 space-y-3">
+                <div>
+                    <h3 className="font-bold text-gray-800">{preset.name || 'Teste Desconhecido'}</h3>
+                    <p className="text-sm text-gray-500">{project.name || 'Projeto Desconhecido'}</p>
+                </div>
+                <div className="text-xs text-gray-600 space-y-1">
+                    <p><span className="font-semibold">Testador:</span> {tester.name || 'N/A'}</p>
+                    <p><span className="font-semibold">Data:</span> {formattedDate}</p>
+                </div>
+                <div className="pt-3 border-t">
+                    <button onClick={() => setSelectedReport(report)} className="w-full bg-gray-100 text-gray-700 p-2 rounded-lg hover:bg-gray-200 transition font-semibold text-sm">Ver Detalhes</button>
+                </div>
+            </div>
+        );
+    };
+
+    return (
+        <div className="space-y-6">
+            <h2 className="text-xl font-bold text-gray-800">Relatórios de Execução</h2>
+            {data.reports.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {data.reports.map(r => <ReportCard key={r.id} report={r} />)}
+                </div>
+            ) : (
+                <div className="text-center py-10 bg-white rounded-xl shadow-sm">
+                    <p className="text-gray-500">Nenhum relatório foi gerado ainda.</p>
+                </div>
+            )}
+            <ReportDetailModal isOpen={!!selectedReport} onClose={() => setSelectedReport(null)} report={selectedReport} />
+        </div>
+    );
+  }
+
+  function TestGuidelines() {
+      const getGuidelineForField = (field) => {
+        switch(field.type) {
+          case 'tri-state': return 'Marque "Sim", "Não" ou "Não se Aplica" para o critério.';
+          case 'textarea': return 'Forneça uma descrição detalhada ou observações relevantes.';
+          case 'text': return 'Insira um texto curto e objetivo conforme o solicitado.';
+          case 'select': return `Selecione uma das opções disponíveis: ${field.options.join(', ')}.`;
+          default: return 'Preencha o campo com a informação solicitada.';
+        }
+      }
+
+      return (
+        <div className="space-y-6">
+          <h2 className="text-2xl font-bold text-gray-800">Orientações de Teste</h2>
+          <p className="text-gray-600">
+            Use este guia como referência para entender os critérios de avaliação de cada tipo de teste.
+          </p>
+          <div className="space-y-8">
+            {presetTests.map(preset => (
+              <div key={preset.id} className="bg-white p-6 rounded-xl shadow-sm">
+                <h3 className="text-lg font-bold text-cyan-600 mb-2">{preset.name}</h3>
+                <p className="text-sm text-gray-600 mb-4">{preset.description}</p>
+                <div className="border-t pt-4">
+                  <h4 className="font-semibold mb-2 text-gray-700">Itens a Avaliar:</h4>
+                  <ul className="list-disc list-inside space-y-2 text-sm">
+                    {preset.formFields.map(field => (
+                      <li key={field.name}>
+                        <span className="font-semibold">{field.label}:</span>
+                        <span className="text-gray-600 ml-1">{getGuidelineForField(field)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+  }
+
+  function CreateCustomTemplateModal({ isOpen, onClose }) {
+      const { addCustomTestTemplate } = useData();
+      const [name, setName] = React.useState('');
+      const [description, setDescription] = React.useState('');
+      const [fields, setFields] = React.useState([]);
+      const [error, setError] = React.useState('');
+
+      const addField = () => {
+          setFields([...fields, { id: Date.now(), name: `field_${Date.now()}`, label: '', description: '', type: 'text', options: [] }]);
+      };
+      const handleFieldChange = (id, prop, value) => {
+          setFields(fields.map(f => f.id === id ? { ...f, [prop]: value } : f));
+      };
+      const handleSave = () => {
+          if (!name.trim() || !description.trim() || fields.length === 0) {
+              setError("Nome, descrição e pelo menos um campo são obrigatórios.");
+              return;
+          }
+          addCustomTestTemplate({ name, description, formFields: fields.map(({id, ...rest}) => rest) });
+          setName(''); setDescription(''); setFields([]); setError(''); onClose();
+      };
+      
+      return (
+          <Modal isOpen={isOpen} onClose={onClose} title="Criar Novo Modelo de Teste" size="2xl">
+              <div className="space-y-4">
+                  {error && <p className="text-red-500 text-sm">{error}</p>}
+                  <input type="text" placeholder="Nome do Modelo" value={name} onChange={e => setName(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg"/>
+                  <textarea placeholder="Descrição do Modelo" value={description} onChange={e => setDescription(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg"/>
+                  <div className="border-t pt-4">
+                      <h4 className="font-semibold">Campos do Formulário</h4>
+                      {fields.map(field => (
+                          <div key={field.id} className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2 p-2 border rounded-lg">
+                              <input type="text" placeholder="Nome do Campo (ex: 'Resposta foi clara?')" value={field.label} onChange={e => handleFieldChange(field.id, 'label', e.target.value)} className="w-full p-2 bg-gray-100 border border-gray-300 rounded-lg text-sm"/>
+                              <select value={field.type} onChange={e => handleFieldChange(field.id, 'type', e.target.value)} className="w-full p-2 bg-gray-100 border border-gray-300 rounded-lg text-sm">
+                                  <option value="text">Texto Curto</option>
+                                  <option value="textarea">Texto Longo</option>
+                                  <option value="tri-state">Sim/Não/N/A</option>
+                                  <option value="select">Seleção</option>
+                              </select>
+                              <textarea placeholder="Descrição/Orientação do Campo" value={field.description} onChange={e => handleFieldChange(field.id, 'description', e.target.value)} className="md:col-span-2 w-full p-2 bg-gray-100 border border-gray-300 rounded-lg text-sm"/>
+                              {field.type === 'select' && <input type="text" placeholder="Opções separadas por vírgula" value={field.options.join(',')} onChange={e => handleFieldChange(field.id, 'options', e.target.value.split(','))} className="md:col-span-2 w-full p-2 bg-gray-100 border border-gray-300 rounded-lg text-sm"/>}
+                          </div>
+                      ))}
+                      <button onClick={addField} className="mt-2 text-sm text-cyan-600 hover:text-cyan-800">+ Adicionar Campo</button>
+                  </div>
+                  <button onClick={handleSave} className="w-full bg-cyan-500 text-white p-3 rounded-lg hover:bg-cyan-600 transition font-bold mt-4">Salvar Modelo</button>
+              </div>
+          </Modal>
+      );
+  }
+
+  function CustomTemplates() {
+      const { data } = useData();
+      const [isAddModalOpen, setAddModalOpen] = React.useState(false);
+
+      return (
+        <div className="space-y-6">
+          <button onClick={() => setAddModalOpen(true)} className="w-full sm:w-auto flex items-center justify-center gap-2 bg-cyan-500 text-white px-4 py-3 rounded-lg font-semibold shadow hover:bg-cyan-600 transition">
+              <PlusIcon className="w-5 h-5" /> Criar Novo Modelo
+          </button>
+          <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6">
+              <h3 className="font-bold text-lg mb-4">Modelos Personalizados</h3>
+              <div className="space-y-3">
+                  {(data.customTestTemplates || []).length > 0 ? data.customTestTemplates.map(t => <div key={t.id} className="bg-gray-50 p-3 rounded-lg font-semibold">{t.name}</div>) : <p className="text-gray-500">Nenhum modelo personalizado foi criado.</p>}
+              </div>
+          </div>
+          <CreateCustomTemplateModal isOpen={isAddModalOpen} onClose={() => setAddModalOpen(false)} />
+        </div>
+      );
+  }
+
+  // --- COMPONENTE PRINCIPAL ---
+  function AppContent() {
+    const { user } = useAuth();
+    const { page } = useNavigation();
+    if (!user) { return <Login />; }
+    const PageComponent = () => {
+        switch (page) {
+            case 'dashboard': return <Dashboard />;
+            case 'client-management': return user.role === 'admin' ? <ClientManagement /> : <Dashboard />;
+            case 'project-management': return user.role === 'admin' ? <ProjectManagement /> : <Dashboard />;
+            case 'test-management': return <TestManagement />;
+            case 'user-management': return user.role === 'admin' ? <UserManagement /> : <Dashboard />;
+            case 'reports': return <Reports />;
+            case 'test-guidelines': return <TestGuidelines />;
+            case 'custom-templates': return user.role === 'admin' ? <CustomTemplates /> : <Dashboard />;
+            default: return <Dashboard />;
+        }
+    };
+    return (<AppLayout><PageComponent /></AppLayout>);
+  }
+
+  function App() {
+    return (
+        <AuthProvider>
+            <DataProvider>
+                <NavigationProvider>
+                    <AppContent />
+                </NavigationProvider>
+            </DataProvider>
+        </AuthProvider>
+    );
+  }
+  
+  // --- RENDERIZAÇÃO ---
+  try {
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  } catch (err) {
+    console.error("Erro ao montar a aplicação React:", err);
+    document.getElementById('root').innerHTML = `<div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-lg max-w-md mx-auto mt-10" role="alert"><h2 class="font-bold">Erro Interno da Aplicação</h2><p>Ocorreu um problema ao renderizar o componente principal.</p><pre class="mt-2 text-xs">${err.message}</pre></div>`;
+  }
+</script>
+
+</body>
+</html>
