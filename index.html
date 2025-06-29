@@ -1091,7 +1091,7 @@
               head: [['Detalhe', 'Informação']],
               body: [
                   ['Cliente', client.name || 'N/A'], ['Projeto', project.name || 'N/A'],
-                  ['Testador', tester.name || 'N/A'], ['Data de Execução', formattedDate],
+                  ['Analista de testes', tester.name || 'N/A'], ['Data de Execução', formattedDate],
               ],
               theme: 'striped',
           });
@@ -1110,7 +1110,7 @@
                       <p><span className="font-semibold">Teste:</span> {preset.name}</p>
                       <p><span className="font-semibold">Projeto:</span> {project.name}</p>
                       <p><span className="font-semibold">Cliente:</span> {client.name}</p>
-                      <p><span className="font-semibold">Testador:</span> {tester.name}</p>
+                      <p><span className="font-semibold">Analista de testes:</span> {tester.name}</p>
                       <p><span className="font-semibold">Data:</span> {formattedDate}</p>
                   </div>
                   <h4 className="font-bold text-gray-800 pt-2 border-t">Resultados da Execução</h4>
@@ -1147,7 +1147,7 @@
                     <p className="text-sm text-gray-500">{project.name || 'Projeto Desconhecido'}</p>
                 </div>
                 <div className="text-xs text-gray-600 space-y-1">
-                    <p><span className="font-semibold">Testador:</span> {tester.name || 'N/A'}</p>
+                    <p><span className="font-semibold">Analista de testes:</span> {tester.name || 'N/A'}</p>
                     <p><span className="font-semibold">Data:</span> {formattedDate}</p>
                 </div>
                 <div className="pt-3 border-t">
@@ -1709,7 +1709,7 @@
                       )}
                   </select>
                   <select name="assignedTo" onChange={handleInputChange} value={newTest.assignedTo} className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg">
-                      <option value="">4. Atribuir a um Testador</option>
+                      <option value="">4. Atribuir a um Analista de testes</option>
                       {(data.users || []).filter(u => u.role === 'tester').map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                   </select>
                   
